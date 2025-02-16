@@ -27,3 +27,13 @@ tabs for the different pages
 settings
 light and dark mode button
 log out
+
+
+Running the virtual environment and the app.
+1. cd S:\Learning\Python\Projects2025\personal-life-coach\main\backend
+2. .\venv\Scripts\Activate
+3. python app.py
+4. API should be running at http://127.0.0.1:5000
+
+Running psql from PostegreSQL bin folder
+1. & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres
