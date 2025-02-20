@@ -37,9 +37,12 @@ Running the virtual environment (backend).
 
 Running psql from PostegreSQL bin folder (database).
 1. & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres
-2. \c task_manager
-3. SELECT * FROM task;
+2. Password for user postgres:
+3. \c task_manager
+4. SELECT * FROM task;
 
 Running the webpage (front end).
-1. cd frontend
-2. npm run dev
+1. cd main
+2. cd frontend
+3. npm run dev
+4. open http://localhost:5173/
