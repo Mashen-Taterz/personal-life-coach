@@ -2,6 +2,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask import jsonify
 from flask_cors import CORS
+from flask import request
 
 app = Flask(__name__)
 CORS(app)  # This will allow all domains to access API
@@ -64,6 +65,34 @@ def get_tasks():
         for task in tasks
     ]
     return jsonify(task_list)
+
+@app.route("/tasks/<int:task_id>", methods=["PUT"])
+def update_task(task_id):
+    task = Task.query.get(task_id)  # Fetch the task by ID
+
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+
+    data = request.json  # Get JSON data from the request
+    if not data or "completed" not in data:
+        return jsonify({"error: Invalid request. 'completed' field is required."}), 400
+
+    updated = False # Track if an update happens
+
+    if "completed" in data and task.completed != data["completed"]:
+        task.completed = data["completed"]  # Update the completion status
+        updated = True
+
+    if updated:
+        db.session.commit()  # Save only if changes were made
+
+    return jsonify({
+        "id": task.id,
+        "title": task.title,
+        "description": task.description,
+        "due_date": task.due_date,
+        "completed": task.completed
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)
