@@ -2,10 +2,12 @@ from flask import Flask, jsonify, request, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_migrate import Migrate
+
 
 
 app = Flask(__name__)
-CORS(app)  # This will allow all domains to access API
+CORS(app, supports_credentials=True)  # Allow all domains to access API and Configure CORS to allow credentials
 
 # Secret key for session management
 app.config["SECRET_KEY"] = "your_secret_key_here"
@@ -16,6 +18,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Initialize the database
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 # User Model
 class User(db.Model):
@@ -56,14 +59,6 @@ DEFAULT_TASKS = [
     {"title": "Sleep", "description": "Get some rest", "due_date": "12:00"},
 ]
 
-# Initialize default tasks if they don't exist
-with app.app_context():
-    if not Task.query.filter_by(user_id=None).first():  # Ensure at least one default task exists
-        for task in DEFAULT_TASKS:
-            new_task = Task(title=task['title'], description=task['description'], due_date=task['due_date'], completed=False)
-            db.session.add(new_task)
-        db.session.commit()
-
 # ------------------------ User Authentication Routes -------------------
 @app.route("/register", methods=["POST"])
 def register_user():
@@ -72,18 +67,24 @@ def register_user():
     email = data.get("email")
     password = data.get("password")
 
+    # Log the incoming data for debugging
+    print(f"Registering user: username={username}, email={email}, password={password}")
+
     if not username or not email or not password:
         return jsonify({"error": "All fields are required"}), 400
     
     # Check if email is already taken
-    existing_user = User.query.filter_by(email=email).first()
+    existing_user = User.query.filter_by(email=email.lower()).first()
     if existing_user:
+        print(f"Email already exists: {email}")  # Debug log for existing user
         return jsonify({"error": "Email already in use"}), 400
     
     hashed_password = generate_password_hash(password, method="sha256")
     new_user = User(username=username, email=email.lower(), password=hashed_password)
     db.session.add(new_user)
     db.session.commit()
+
+    print(f"User {username} successfully registered with email: {email}")  # Debug log for successful registration
 
     return jsonify({"message": "User registered succesfully"}), 201
 
@@ -94,11 +95,22 @@ def login_user():
     email = data.get("email").lower()
     password = data.get("password")
 
+    print(f"Attempting login with email: {email}")  # Debug log for login attempt
+
     user = User.query.filter_by(email=email.lower()).first()
-    if not user or not check_password_hash(user.password, password):
+    
+    if not user:
+        print(f"User not found for email: {email}")  # Debug log for user not found
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    # Check if password is correct
+    if not check_password_hash(user.password, password):
+        print(f"Invalid password for user: {email}")  # Debug log for incorrect password
         return jsonify({"error": "Invalid credentials"}), 401
     
     session["user_id"] = user.id #Store user session
+    print(f"User {user.username} logged in successfully with email: {email}")  # Debug log for successful login
+
     return jsonify({"message": "Logged in successfully", "user_id": user.id})
 
 # Logout User
@@ -106,6 +118,12 @@ def login_user():
 def logout_user():
     session.pop("user_id", None) # Remove user session
     return jsonify({"message": "Logged out successfully"}), 200
+
+@app.route("/check-session", methods=["GET"])
+def check_session():
+    if "user_id" in session:
+        return jsonify({"user_id": session["user_id"]}), 200
+    return jsonify({"message": "Not logged in"}), 200
 
 # --------------------- Task Management Routes ------------------------
 
@@ -117,6 +135,8 @@ def get_tasks():
         tasks = Task.query.filter((Task.user_id == user_id) | (Task.user_id.is_(None))).all()
     else:
         tasks = Task.query.filter(Task.user_id.is_(None)).all()  # Show only default tasks
+
+    print(f"Fetched {len(tasks)} tasks for user_id: {user_id}")  # Debug log for tasks fetched
 
     task_list = [
         {"id": task.id, "title": task.title, "description": task.description, "due_date": task.due_date, "completed": task.completed}
@@ -145,20 +165,30 @@ def add_task():
 
 @app.route("/tasks/<int:task_id>", methods=["PUT"])
 def update_task(task_id):
-    if "user_id" not in session:
-        return jsonify({"error": "Unauthorized access"}), 401
+    # Check if the user is logged in
+    user_id = session.get("user_id")
     
-    task = Task.query.filter_by(id=task_id, user_id=session["user_id"]).first()
+    # If not logged in, allow updating of default tasks
+    if user_id:
+        task = Task.query.filter_by(id=task_id, user_id=user_id).first()
+    else:
+        task = Task.query.filter_by(id=task_id, user_id=None).first()  # Fetch default task
+
     if not task:
         return jsonify({"error": "Task not found or unauthorized"}), 404
 
+    # Get data from the request
     data = request.json
     if not data or "completed" not in data:
         return jsonify({"error": "Invalid request. 'completed' field is required."}), 400
 
+    # Update the task's completion status
     task.completed = data["completed"]
+    
+    # Commit the changes to the database
     db.session.commit()
     
+    # Return updated task data
     return jsonify({
         "id": task.id,
         "title": task.title,
@@ -166,6 +196,7 @@ def update_task(task_id):
         "due_date": task.due_date,
         "completed": task.completed
     })
+
 
 @app.route("/tasks/<int:task_id>", methods=["DELETE"])
 def delete_task(task_id):
