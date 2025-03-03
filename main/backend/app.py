@@ -3,6 +3,9 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 
 
 
@@ -74,12 +77,14 @@ def register_user():
         return jsonify({"error": "All fields are required"}), 400
     
     # Check if email is already taken
+    print(f"Checking if email exists: {email}")
     existing_user = User.query.filter_by(email=email.lower()).first()
     if existing_user:
         print(f"Email already exists: {email}")  # Debug log for existing user
         return jsonify({"error": "Email already in use"}), 400
     
-    hashed_password = generate_password_hash(password, method="sha256")
+    hashed_password = generate_password_hash(password, method="pbkdf2:sha256")
+    print(f"Hashed Password: {hashed_password}")  # Debug log to see hashed password
     new_user = User(username=username, email=email.lower(), password=hashed_password)
     db.session.add(new_user)
     db.session.commit()
@@ -111,7 +116,11 @@ def login_user():
     session["user_id"] = user.id #Store user session
     print(f"User {user.username} logged in successfully with email: {email}")  # Debug log for successful login
 
-    return jsonify({"message": "Logged in successfully", "user_id": user.id})
+    return jsonify({
+        "message": "Logged in successfully",
+        "user_id": user.id,
+        "username": user.username
+    })
 
 # Logout User
 @app.route("/logout", methods=["POST"])

@@ -3,10 +3,11 @@ import axios from "axios";
 
 function App() {
   const [tasks, setTasks] = useState([]);
+  const [username, setUsername] = useState(""); // State for username
+  const [email, setEmail] = useState(""); // State for email
+  const [password, setPassword] = useState(""); // State for password
   const [userId, setUserId] = useState(null); // Store user session
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState(null);
+  const [error, setError] = useState(null); // Store error message
   const [isRegistering, setIsRegistering] = useState(false); // Toggle between login & signup
 
   // Fetch tasks from the backend
@@ -75,6 +76,7 @@ function App() {
       )
       .then((response) => {
         setUserId(response.data.user_id);
+        setUsername(response.data.username);
         setError(null);
         setEmail("");
         setPassword("");
@@ -87,12 +89,13 @@ function App() {
     axios
       .post(
         "http://127.0.0.1:5000/register",
-        { email, password },
+        { username, email, password },
         { withCredentials: true }
       )
       .then((response) => {
         setUserId(response.data.user_id); // Log in automatically after signup
         setError(null);
+        setUsername("");
         setEmail("");
         setPassword("");
       })
@@ -120,6 +123,12 @@ function App() {
             // Signup Form
             <div>
               <h2>Sign Up</h2>
+              <input
+                type="text"
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
               <input
                 type="email"
                 placeholder="Email"
@@ -166,7 +175,7 @@ function App() {
       ) : (
         // Logout Button
         <div>
-          <p>Logged in as User {userId}</p>
+          <p>Logged in as {username ? username: "Guest"}</p>
           <button onClick={handleLogout}>Logout</button>
         </div>
       )}
