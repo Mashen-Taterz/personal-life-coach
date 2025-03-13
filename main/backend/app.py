@@ -3,14 +3,21 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
+from flask_session import Session
+from datetime import timedelta
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
-
-
-
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)  # Allow all domains to access API and Configure CORS to allow credentials
+
+app.config["SESSION_TYPE"] = "filesystem"  # Stores sessions in the server
+app.config["SESSION_PERMANENT"] = False
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)  # Set session expiry  
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
+Session(app)
 
 # Secret key for session management
 app.config["SECRET_KEY"] = "your_secret_key_here"
@@ -148,7 +155,7 @@ def get_tasks():
     print(f"Fetched {len(tasks)} tasks for user_id: {user_id}")  # Debug log for tasks fetched
 
     task_list = [
-        {"id": task.id, "title": task.title, "description": task.description, "due_date": task.due_date, "completed": task.completed}
+        {"id": task.id, "title": task.title, "description": task.description, "due_date": task.due_date, "completed": task.completed, "user_id": task.user_id}
         for task in tasks
     ]
     return jsonify(task_list)
@@ -174,30 +181,36 @@ def add_task():
 
 @app.route("/tasks/<int:task_id>", methods=["PUT"])
 def update_task(task_id):
-    # Check if the user is logged in
+    print(f"Session user_id: {session.get('user_id')}")
+    # Check if session user_id is correctly set.
     user_id = session.get("user_id")
-    
-    # If not logged in, allow updating of default tasks
-    if user_id:
-        task = Task.query.filter_by(id=task_id, user_id=user_id).first()
-    else:
-        task = Task.query.filter_by(id=task_id, user_id=None).first()  # Fetch default task
+
+    # Prevent modifications if the user is not logged in
+    if not user_id:
+        return jsonify({"error": "Unauthorized access. Please log in."}), 401
+
+    # Fetch the task that belongs to the logged-in user
+    task = Task.query.filter_by(id=task_id, user_id=user_id).first()
 
     if not task:
         return jsonify({"error": "Task not found or unauthorized"}), 404
 
     # Get data from the request
-    data = request.json
-    if not data or "completed" not in data:
-        return jsonify({"error": "Invalid request. 'completed' field is required."}), 400
+    data = request.get_json()
 
-    # Update the task's completion status
-    task.completed = data["completed"]
-    
-    # Commit the changes to the database
+    # Validate required fields
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    # Update only the fields provided in the request
+    task.title = data.get("title", task.title)
+    task.description = data.get("description", task.description)
+    task.due_date = data.get("due_date", task.due_date)
+    task.completed = data.get("completed", task.completed)
+
+    # Save changes to the database
     db.session.commit()
-    
-    # Return updated task data
+
     return jsonify({
         "id": task.id,
         "title": task.title,
@@ -209,10 +222,15 @@ def update_task(task_id):
 
 @app.route("/tasks/<int:task_id>", methods=["DELETE"])
 def delete_task(task_id):
-    if "user_id" not in session:
-        return jsonify({"error": "Unauthorized access"}), 401
+    user_id = session.get("user_id")
 
-    task = Task.query.filter_by(id=task_id, user_id=session["user_id"]).first()
+    # Prevent deletion if the user is not logged in
+    if not user_id:
+        return jsonify({"error": "Unauthorized access. Please log in."}), 401
+
+    # Allow deletion only if the task belongs to the logged-in user
+    task = Task.query.filter_by(id=task_id, user_id=user_id).first()
+
     if not task:
         return jsonify({"error": "Task not found or unauthorized"}), 404
 
@@ -221,6 +239,20 @@ def delete_task(task_id):
 
     return jsonify({"message": "Task deleted successfully"})
 
+# ------------------------ Helper Functions --------------------------
+def add_default_tasks(user_id):
+    existing_tasks = Task.query.filter_by(user_id=user_id).all()
+    if not existing_tasks:
+        for task in DEFAULT_TASKS:
+            new_task = Task(
+                title=task["title"],
+                description=task["description"],
+                due_date=task["due_date"],
+                user_id=user_id,
+                completed=False
+            )
+            db.session.add(new_task)
+        db.session.commit()
 
 if __name__ == "__main__":
     app.run(debug=True)

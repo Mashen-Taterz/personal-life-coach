@@ -9,6 +9,9 @@ function App() {
   const [userId, setUserId] = useState(null); // Store user session
   const [error, setError] = useState(null); // Store error message
   const [isRegistering, setIsRegistering] = useState(false); // Toggle between login & signup
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editedTitle, setEditedTitle] = useState("");
+  const [editedDescription, setEditedDescription] = useState("");
 
   // Fetch tasks from the backend
   useEffect(() => {
@@ -64,7 +67,39 @@ function App() {
           console.error("Error updating task:", error);
         });
     }
-  };  
+  };
+  
+  // Handle editing tasks
+  const handleEdit = (taskId, title, description) => {
+    setEditingTaskId(taskId);
+    setEditedTitle(title);
+    setEditedDescription(description);
+  };
+
+  const saveEdit = (taskId) => {
+    if (!userId) {
+      console.error("Unauthorized: User not logged in.");
+      return;
+    }
+    
+    axios
+      .put(
+        `http://127.0.0.1:5000/tasks/${taskId}`,
+        { title: editedTitle, description: editedDescription },
+        { withCredentials: true }
+      )
+      .then(() => {
+        setTasks((prevTasks) =>
+          prevTasks.map((task) =>
+            task.id === taskId
+              ? { ...task, title: editedTitle, description: editedDescription }
+              : task
+          )
+        );
+        setEditingTaskId(null);
+      })
+      .catch((error) => console.error("Error updating task:", error));
+  };
 
   // Handle login
   const handleLogin = () => {
@@ -180,6 +215,34 @@ function App() {
         </div>
       )}
 
+      {/* Add Task Form (only if logged in) */}
+      {userId && (
+        <div>
+          <h2>Add New Task</h2>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              // Call API to add new task
+              // Add task code here
+            }}
+          >
+            <input
+              type="text"
+              placeholder="Task Title"
+              onChange={(e) => setEditedTitle(e.target.value)}
+              value={editedTitle}
+            />
+            <input
+              type="text"
+              placeholder="Task Description"
+              onChange={(e) => setEditedDescription(e.target.value)}
+              value={editedDescription}
+            />
+            <button type="submit">Add Task</button>
+          </form>
+        </div>
+      )}
+
       {/* Task List */}
       <ul>
         {tasks.map((task) => (
@@ -193,6 +256,27 @@ function App() {
               {task.title}
             </strong>{" "}
             - {task.description} (Due: {task.due_date})
+
+            {/* Edit Task Button */}
+            {editingTaskId === task.id ? (
+              <div>
+                <input
+                  type="text"
+                  value={editedTitle}
+                  onChange={(e) => setEditedTitle(e.target.value)}
+                />
+                <input
+                  type="text"
+                  value={editedDescription}
+                  onChange={(e) => setEditedDescription(e.target.value)}
+                />
+                <button onClick={() => saveEdit(task.id)}>Save</button>
+              </div>
+            ) : (
+              <button onClick={() => handleEdit(task.id, task.title, task.description)}>
+                Edit
+              </button>
+            )}
           </li>
         ))}
       </ul>
